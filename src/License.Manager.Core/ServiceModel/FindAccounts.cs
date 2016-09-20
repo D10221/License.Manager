@@ -1,5 +1,5 @@
-﻿//
-// Copyright © 2012 - 2013 Nauck IT KG     http://www.nauck-it.de
+//
+// Copyright � 2012 - 2013 Nauck IT KG     http://www.nauck-it.de
 //
 // Author:
 //  Daniel Nauck        <d.nauck(at)nauck-it.de>
@@ -23,22 +23,19 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-using System;
-using License.Manager.Core.ServiceModel;
-using ServiceStack.FluentValidation;
+using System.Collections.Generic;
+using ServiceStack.ServiceHost;
 
-namespace License.Manager.Core.Validation
+namespace License.Manager.Core.ServiceModel
 {
-    public class CreateLicenseValidator : AbstractValidator<CreateLicense>
+    [Route("/accounts", "GET, OPTIONS")]
+    //[Route("/accounts/page/{Page}")]
+    public class FindAccounts : IReturn<List<AccountDto>>
     {
-        public CreateLicenseValidator()
-        {
-            RuleFor(l => l.LicenseType).NotNull();
-            RuleFor(l => l.Quantity).GreaterThanOrEqualTo(1);
-            RuleFor(l => l.Expiration).GreaterThan(DateTime.UtcNow);
+        public string Name { get; set; }
+        public string Email { get; set; }
 
-            // RuleFor(l => l.CustomerId).GreaterThan(0);
-            // RuleFor(l => l.ProductId).GreaterThan(0);
-        }
+        //public int? Page { get; set; }
+        //public int? PageSize { get; set; }
     }
 }

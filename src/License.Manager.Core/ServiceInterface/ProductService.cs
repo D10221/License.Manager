@@ -25,16 +25,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Web.Configuration;
 using License.Manager.Core.Model;
-using License.Manager.Core.Persistence;
 using License.Manager.Core.ServiceModel;
 using Portable.Licensing.Security.Cryptography;
-using Raven.Client;
 using ServiceStack.Common;
 using ServiceStack.Common.Web;
+using ServiceStack.OrmLite;
 using ServiceStack.ServiceInterface;
 using KeyPair = License.Manager.Core.Model.KeyPair;
 
@@ -43,28 +41,23 @@ namespace License.Manager.Core.ServiceInterface
     [Authenticate]
     public class ProductService : Service
     {
-        private readonly IDocumentSession documentSession;
+        private readonly IDbConnectionFactory _db;
 
-        public ProductService(IDocumentSession documentSession)
+        public ProductService(IDbConnectionFactory db)
         {
-            this.documentSession = documentSession;
+            _db = db;            
         }
 
         public object Post(CreateProduct request)
         {
             var machineKeySection = WebConfigurationManager.GetSection("system.web/machineKey") as MachineKeySection;
-            if (machineKeySection == null ||
-                StringComparer.OrdinalIgnoreCase.Compare(machineKeySection.Decryption, "Auto") == 0)
+            if (machineKeySection == null )
+            //    StringComparer.OrdinalIgnoreCase.Compare(machineKeySection.Decryption, "Auto") == 0)
                 throw new Exception(Properties.Resources.InvalidMachineKeySection);
 
-            var product =
-                new Product
-                    {
-                        KeyPair = GenerateKeyPair(machineKeySection.DecryptionKey)
-                    }.PopulateWith(request);
-
-            documentSession.Store(product);
-            documentSession.SaveChanges();
+            var product = new Product { KeyPair = GenerateKeyPair(machineKeySection.DecryptionKey) }.PopulateWith(request);
+            
+            _db.OpenDbConnection().Insert(product);
 
             return
                 new HttpResult(new ProductDto().PopulateWith(product))
@@ -94,27 +87,33 @@ namespace License.Manager.Core.ServiceInterface
 
         public object Put(UpdateProduct request)
         {
-            var product = documentSession.Load<Product>(request.Id);
-            if (product == null)
-                HttpError.NotFound("Product not found!");
+            Product product;
+            using (var cnx = _db.CreateDbConnection())
+            {
+                cnx.Open();
+                product = cnx.GetById<Product>(request.Id);
+                if (product == null)
+                    HttpError.NotFound("Product not found!");
 
-            product.PopulateWith(request);
-
-            documentSession.Store(product);
-            documentSession.SaveChanges();
+                product.PopulateWith(request);
+                
+                cnx.Update(product);
+            }
 
             return new ProductDto().PopulateWith(product);
         }
 
         public object Delete(UpdateProduct request)
         {
-            var product = documentSession.Load<Product>(request.Id);
+            Product product;
+            using (var cnx = _db.CreateDbConnection())
+            {
+                cnx.Open();
+                product = cnx.GetById<Product>(request.Id);
+            }
             if (product == null)
                 HttpError.NotFound("Product not found!");
-
-            documentSession.Delete(product);
-            documentSession.SaveChanges();
-
+            
             return
                 new HttpResult
                     {
@@ -124,33 +123,35 @@ namespace License.Manager.Core.ServiceInterface
 
         public object Get(GetProduct request)
         {
-            var product = documentSession.Load<Product>(request.Id);
-            if (product == null)
-                HttpError.NotFound("Product not found!");
+            using (var cnx = _db.CreateDbConnection())
+            {
+                cnx.Open();
+                var product = cnx.GetById<Product>(request.Id); 
+                if (product == null)
+                    HttpError.NotFound("Product not found!");
 
-            return new ProductDto().PopulateWith(product);
+                return new ProductDto().PopulateWith(product);
+            }                
         }
 
         public object Get(FindProducts request)
-        {
-            var query = documentSession.Query<Product_ByNameOrDescription.Result, Product_ByNameOrDescription>();
+        {            
+            using (var cnx = _db.CreateDbConnection())
+            {
+                cnx.Open();
 
-            if (!string.IsNullOrWhiteSpace(request.Name))
-                query = query.Search(c => c.Name, request.Name);
+                if (!string.IsNullOrWhiteSpace(request.Name))
+                {                    
+                    return cnx.Select<Product>(p => p.Name == request.Name);
+                }
 
-            if (!string.IsNullOrWhiteSpace(request.Description))
-                query = query.Search(c => c.Name, request.Description);
-
-            var products = query
-                .OfType<Product>()
-                .ToList();
-
-            var result = new List<ProductDto>(products.Count);
-            result.AddRange(
-                products.Select(
-                    product => new ProductDto().PopulateWith(product)));
-
-            return result;
+                if (!string.IsNullOrWhiteSpace(request.Description))
+                {                 
+                    return cnx.Select<Product>(p => p.Description == request.Description);
+                }
+                
+                return cnx.Select<Product>(x=>x);
+            }                
         }
     }
 }

@@ -23,14 +23,12 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-using System.Linq;
 using System.Net;
 using License.Manager.Core.Model;
-using License.Manager.Core.Persistence;
 using License.Manager.Core.ServiceModel;
-using Raven.Client;
 using ServiceStack.Common;
 using ServiceStack.Common.Web;
+using ServiceStack.OrmLite;
 using ServiceStack.ServiceInterface;
 
 namespace License.Manager.Core.ServiceInterface
@@ -38,19 +36,22 @@ namespace License.Manager.Core.ServiceInterface
     [Authenticate]
     public class CustomerService : Service
     {
-        private readonly IDocumentSession documentSession;
+        private readonly IDbConnectionFactory _db;
 
-        public CustomerService(IDocumentSession documentSession)
+        public CustomerService(IDbConnectionFactory db)
         {
-            this.documentSession = documentSession;
+            _db = db;
         }
 
         public object Post(CreateCustomer request)
         {
             var customer = new Customer().PopulateWith(request);
-
-            documentSession.Store(customer);
-            documentSession.SaveChanges();
+            
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();
+                db.Insert(customer);
+            }
 
             return
                 new HttpResult(customer)
@@ -65,37 +66,45 @@ namespace License.Manager.Core.ServiceInterface
 
         public object Put(UpdateCustomer request)
         {
-            var customer = documentSession.Load<Customer>(request.Id);
-            if (customer == null)
-                HttpError.NotFound("Customer not found!");
+            Customer customer;//documentSession.Load<Customer>(request.Id);
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();
+                customer = db.GetById<Customer>(request.Id);
+                if (customer == null)
+                    HttpError.NotFound("Customer not found!");
 
-            customer.PopulateWith(request);
-
-            documentSession.Store(customer);
-            documentSession.SaveChanges();
+                customer.PopulateWith(request);
+                
+                db.Update(customer);
+            }
 
             return customer;
         }
 
         public object Delete(UpdateCustomer request)
         {
-            var customer = documentSession.Load<Customer>(request.Id);
-            if (customer == null)
-                HttpError.NotFound("Customer not found!");
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();
+                var customer = db.GetById<Customer>(request.Id);
+                if (customer == null)
+                    HttpError.NotFound("Customer not found!");
+                
+                db.Delete(customer);
+            }
 
-            documentSession.Delete(customer);
-            documentSession.SaveChanges();
-
-            return
-                new HttpResult
-                    {
-                        StatusCode = HttpStatusCode.NoContent,
-                    };
+            return new HttpResult { StatusCode = HttpStatusCode.NoContent, };
         }
 
         public object Get(GetCustomer request)
         {
-            var customer = documentSession.Load<Customer>(request.Id);
+            Customer customer; 
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();
+                customer = db.GetById<Customer>(request.Id);
+            }
             if (customer == null)
                 HttpError.NotFound("Customer not found!");
 
@@ -104,20 +113,27 @@ namespace License.Manager.Core.ServiceInterface
 
         public object Get(FindCustomers request)
         {
-            var query = documentSession.Query<CustomerAllPropertiesIndex.Result, CustomerAllPropertiesIndex>();
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();
+                
+                if (!string.IsNullOrWhiteSpace(request.Name))
+                {                
+                    return db.Select<Customer>(x => x.Name == request.Name);
+                }
 
-            if (!string.IsNullOrWhiteSpace(request.Name))
-                query = query.Search(c => c.Query, request.Name);
+                if (!string.IsNullOrWhiteSpace(request.Company))
+                {                 
+                    return db.Select<Customer>(x => x.Company == request.Company);
+                }
 
-            if (!string.IsNullOrWhiteSpace(request.Company))
-                query = query.Search(c => c.Query, request.Company);
+                if (!string.IsNullOrWhiteSpace(request.Email))
+                {                    
+                    return db.Select<Customer>(x => x.Email == request.Email);
+                }
 
-            if (!string.IsNullOrWhiteSpace(request.Email))
-                query = query.Search(c => c.Query, request.Email);
-
-            return query
-                .OfType<Customer>()
-                .ToList();
+                return db.Select<Customer>();
+            }            
         }
     }
 }

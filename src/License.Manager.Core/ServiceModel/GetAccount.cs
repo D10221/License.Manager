@@ -23,22 +23,14 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-using System;
-using License.Manager.Core.ServiceModel;
-using ServiceStack.FluentValidation;
+using ServiceStack.ServiceHost;
 
-namespace License.Manager.Core.Validation
+namespace License.Manager.Core.ServiceModel
 {
-    public class CreateLicenseValidator : AbstractValidator<CreateLicense>
+    [Route("/accounts/{Id}", "GET, OPTIONS")]
+    [Route("/accounts/my", "GET, OPTIONS")]
+    public class GetAccount : IReturn<AccountDto>
     {
-        public CreateLicenseValidator()
-        {
-            RuleFor(l => l.LicenseType).NotNull();
-            RuleFor(l => l.Quantity).GreaterThanOrEqualTo(1);
-            RuleFor(l => l.Expiration).GreaterThan(DateTime.UtcNow);
-
-            // RuleFor(l => l.CustomerId).GreaterThan(0);
-            // RuleFor(l => l.ProductId).GreaterThan(0);
-        }
+        public int? Id { get; set; }
     }
 }

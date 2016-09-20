@@ -38,32 +38,12 @@
     <Reference Include="Portable.Licensing">
       <HintPath>..\..\packages\Portable.Licensing.1.1.0\lib\portable-net40+sl4+wp7+win8\Portable.Licensing.dll</HintPath>
     </Reference>
-    <Reference Include="Raven.Abstractions, Version=2.0.3.0, Culture=neutral, PublicKeyToken=37f41c7f99471593, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\packages\RavenDB.Client.2.0.2370\lib\net40\Raven.Abstractions.dll</HintPath>
-    </Reference>
-    <Reference Include="Raven.Client.Embedded, Version=2.0.3.0, Culture=neutral, PublicKeyToken=37f41c7f99471593, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\packages\RavenDB.Embedded.2.0.2370\lib\net40\Raven.Client.Embedded.dll</HintPath>
-    </Reference>
-    <Reference Include="Raven.Client.Lightweight, Version=2.0.3.0, Culture=neutral, PublicKeyToken=37f41c7f99471593, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\packages\RavenDB.Client.2.0.2370\lib\net40\Raven.Client.Lightweight.dll</HintPath>
-    </Reference>
-    <Reference Include="Raven.Database, Version=2.0.3.0, Culture=neutral, PublicKeyToken=37f41c7f99471593, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\packages\RavenDB.Database.2.0.2370\lib\net40\Raven.Database.dll</HintPath>
-    </Reference>
     <Reference Include="ServiceStack, Version=3.9.48.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\packages\ServiceStack.3.9.48\lib\net35\ServiceStack.dll</HintPath>
     </Reference>
     <Reference Include="ServiceStack.Authentication.OpenId">
       <HintPath>..\..\packages\ServiceStack.Authentication.OpenId.3.9.49\lib\net35\ServiceStack.Authentication.OpenId.dll</HintPath>
-    </Reference>
-    <Reference Include="ServiceStack.Authentication.RavenDb, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\packages\ServiceStack.Authentication.RavenDB.3.9.44\lib\ServiceStack.Authentication.RavenDb.dll</HintPath>
     </Reference>
     <Reference Include="ServiceStack.Common, Version=3.9.48.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
@@ -81,10 +61,6 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\packages\ServiceStack.OrmLite.SqlServer.3.9.48\lib\ServiceStack.OrmLite.SqlServer.dll</HintPath>
     </Reference>
-    <Reference Include="ServiceStack.Redis, Version=3.9.48.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\packages\ServiceStack.Redis.3.9.48\lib\net35\ServiceStack.Redis.dll</HintPath>
-    </Reference>
     <Reference Include="ServiceStack.ServiceInterface, Version=3.9.48.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\packages\ServiceStack.3.9.48\lib\net35\ServiceStack.ServiceInterface.dll</HintPath>
@@ -97,6 +73,7 @@
     <Reference Include="System.ComponentModel.Composition" />
     <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
     <Reference Include="System.Web" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="Microsoft.CSharp" />
@@ -109,19 +86,22 @@
     <Compile Include="Model\KeyPair.cs" />
     <Compile Include="Model\License.cs" />
     <Compile Include="Model\Product.cs" />
-    <Compile Include="Persistence\License_ByProductOrCustomer.cs" />
-    <Compile Include="Persistence\CustomerAllPropertiesIndex.cs" />
-    <Compile Include="Persistence\Product_ByNameOrDescription.cs" />
-    <Compile Include="Persistence\ProductAllPropertiesIndex.cs" />
+    <Compile Include="Model\User.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
+    <Compile Include="ServiceInterface\AccountService.cs" />
     <Compile Include="ServiceInterface\LicenseService.cs" />
     <Compile Include="ServiceInterface\CustomerService.cs" />
     <Compile Include="ServiceInterface\ProductService.cs" />
+    <Compile Include="ServiceModel\AccountDto.cs" />
+    <Compile Include="ServiceModel\UpdateAccount.cs" />
+    <Compile Include="ServiceModel\CreateAccount.cs" />
+    <Compile Include="ServiceModel\FindAccounts.cs" />
+    <Compile Include="ServiceModel\GetAccount.cs" />
     <Compile Include="ServiceModel\UpdateCustomer.cs" />
     <Compile Include="ServiceModel\CreateCustomer.cs" />
     <Compile Include="ServiceModel\GetCustomer.cs" />
@@ -141,6 +121,8 @@
     <Compile Include="ServiceModel\ProductDto.cs" />
     <Compile Include="ServiceModel\UpdateLicense.cs" />
     <Compile Include="UserSession.cs" />
+    <Compile Include="Validation\UpdateAccountValidator.cs" />
+    <Compile Include="Validation\CreateAccountValidator.cs" />
     <Compile Include="Validation\CreateLicenseValidator.cs" />
     <Compile Include="Validation\CreateProductValidator.cs" />
     <Compile Include="Validation\CreateCustomerValidator.cs" />
@@ -152,6 +134,7 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <None Include="App.config" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

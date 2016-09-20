@@ -29,3 +29,5 @@ _ReSharper*/
 [Tt]est[Rr]esult*
 packages/
 Publish/
+/src/.vs/config
+/packages

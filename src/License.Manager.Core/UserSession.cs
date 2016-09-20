@@ -23,15 +23,73 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+using ServiceStack.Authentication.OpenId;
 using ServiceStack.ServiceInterface.Auth;
 
 namespace License.Manager.Core
 {
     public class UserSession : AuthUserSession
     {
+
         public override void OnAuthenticated(ServiceStack.ServiceInterface.IServiceBase authService, IAuthSession session, IOAuthTokens tokens, System.Collections.Generic.Dictionary<string, string> authInfo)
         {
             base.OnAuthenticated(authService, session, tokens, authInfo);
+
+            //Populate all matching fields from this session to your own custom User table
+
+            foreach (var authToken in session.ProviderOAuthAccess)
+            {
+                
+                if (authToken.Provider == CustomCredentialsAuthProvider.Name)
+                {
+                    //user.YahooUserId = authToken.UserId;
+                    //user.YahooFullName = authToken.FullName;
+                    //user.YahooEmail = authToken.Email;
+                }
+                else if (authToken.Provider == GoogleOpenIdOAuthProvider.Name)
+                {
+                    //user.GoogleUserId = authToken.UserId;
+                    //user.GoogleFullName = authToken.FullName;
+                    //user.GoogleEmail = authToken.Email;
+                }
+                else if (authToken.Provider == YahooOpenIdOAuthProvider.Name)
+                {
+                    //user.YahooUserId = authToken.UserId;
+                    //user.YahooFullName = authToken.FullName;
+                    //user.YahooEmail = authToken.Email;
+                }
+                else if (authToken.Provider == MyOpenIdOAuthProvider.Name)
+                {
+                    //user.YahooUserId = authToken.UserId;
+                    //user.YahooFullName = authToken.FullName;
+                    //user.YahooEmail = authToken.Email;
+                }
+                else if (authToken.Provider == CredentialsAuthProvider.Name)
+                {
+                    //user.YahooUserId = authToken.UserId;
+                    //user.YahooFullName = authToken.FullName;
+                    //user.YahooEmail = authToken.Email;
+                }
+                else if (authToken.Provider == BasicAuthProvider.Name)
+                {
+                    //user.YahooUserId = authToken.UserId;
+                    //user.YahooFullName = authToken.FullName;
+                    //user.YahooEmail = authToken.Email;
+                }
+                else if (authToken.Provider == FacebookAuthProvider.Name)
+                {
+                    //user.YahooUserId = authToken.UserId;
+                    //user.YahooFullName = authToken.FullName;
+                    //user.YahooEmail = authToken.Email;
+                }                
+                else if (authToken.Provider == DigestAuthProvider.Name)
+                {
+                    //user.YahooUserId = authToken.UserId;
+                    //user.YahooFullName = authToken.FullName;
+                    //user.YahooEmail = authToken.Email;
+                }
+                
+            }
         }
     }
 }

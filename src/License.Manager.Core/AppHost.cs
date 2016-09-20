@@ -23,14 +23,15 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+using System;
+using System.Collections.Generic;
+using System.Configuration;
+using System.Linq;
 using Funq;
-using Raven.Client;
-using Raven.Client.Indexes;
-using ServiceStack.Authentication.OpenId;
-using ServiceStack.Authentication.RavenDb;
 using ServiceStack.CacheAccess;
 using ServiceStack.CacheAccess.Providers;
 using ServiceStack.Configuration;
+using ServiceStack.OrmLite;
 using ServiceStack.ServiceInterface;
 using ServiceStack.ServiceInterface.Auth;
 using ServiceStack.ServiceInterface.Cors;
@@ -74,59 +75,114 @@ namespace License.Manager.Core
             container.Register<ICacheClient>(new MemoryCacheClient());
 
             // register RavenDB dependencies
-            ConfigureRavenDb(container);
+            ConfigureDb(container);
 
             // register authentication framework
             ConfigureAuthentication(container);
         }
 
-        public void ConfigureRavenDb(Container container)
-        {
-            //NonAdminHttp.EnsureCanListenToWhenInNonAdminContext(8080);
+        public void ConfigureDb(Container container)
+        {           
+            IDbConnectionFactory dbConnectionFactory = new OrmLiteConnectionFactory(ConnectionString, SqlServerDialect.Provider);
 
-            var documentStore =
-                new Raven.Client.Embedded.EmbeddableDocumentStore()
-                    {
-                        UseEmbeddedHttpServer = true
-                    }
-                    .Initialize();
+            using (var db = dbConnectionFactory.CreateDbConnection())
+            {
+                db.Open();
+                db.CreateTableIfNotExists<Model.License>();
+                db.CreateTableIfNotExists<Model.Product>();
+                db.CreateTableIfNotExists<Model.Customer>();                
+            }
 
-
-            IndexCreation.CreateIndexes(GetType().Assembly, documentStore);
-
-            container.Register(documentStore);
-
-            container.Register(c => c.Resolve<IDocumentStore>().OpenSession())
-                     .ReusedWithin(ReuseScope.Request);
-
+            container.Register(dbConnectionFactory);
         }
+
+        public string ConnectionString => ConfigurationManager.ConnectionStrings["Default"].ConnectionString;
 
         private void ConfigureAuthentication(Container container)
         {
+            var userRep = new OrmLiteAuthRepository(container.Resolve<IDbConnectionFactory>());
+            userRep.CreateMissingTables();
+            var admin = userRep.GetUserAuthByUserName("admin");
+            if (admin == null)
+            {
+                userRep.CreateUserAuth(new UserAuth()
+                {
+                    Roles = new[] { "admin" }.ToList(),
+                    DisplayName = "Admin",
+                    UserName = "admin",
+                    FirstName = "me",
+                    Email = "admin@no.mail",
+                    BirthDate = DateTime.Parse("1969/06/09" )
+                }, "admin");
+            }
+
+            container.Register<IUserAuthRepository>(userRep);
+
             var appSettings = new AppSettings();
 
             //Default route: /auth/{provider}
+            var credentialsAuthProvider = new CustomCredentialsAuthProvider(appSettings, container.Resolve<IUserAuthRepository>());
+            
             Plugins.Add(new AuthFeature(() => new UserSession(),
                                         new IAuthProvider[]
                                             {
-                                                new CredentialsAuthProvider(appSettings),
+                                                credentialsAuthProvider,
                                                 //new TwitterAuthProvider(appSettings), //Sign-in with Twitter
                                                 //new FacebookAuthProvider(appSettings), //Sign-in with Facebook
                                                 //new DigestAuthProvider(appSettings), //Sign-in with Digest Auth
                                                 //new BasicAuthProvider(), //Sign-in with Basic Auth
 
                                                 //Register new OpenId providers you want to allow authentication with
-                                                new GoogleOpenIdOAuthProvider(appSettings), //Sign-in with Goolge OpenId
-                                                new YahooOpenIdOAuthProvider(appSettings), //Sign-in with Yahoo OpenId
-                                                new MyOpenIdOAuthProvider(appSettings), //Sign-in with MyOpenId
-                                                new OpenIdOAuthProvider(appSettings),  //Sign-in with any Custom OpenId Provider
+                                                //new GoogleOpenIdOAuthProvider(appSettings), //Sign-in with Goolge OpenId
+                                                //new YahooOpenIdOAuthProvider(appSettings), //Sign-in with Yahoo OpenId
+                                                //new MyOpenIdOAuthProvider(appSettings), //Sign-in with MyOpenId
+                                                //new OpenIdOAuthProvider(appSettings),  //Sign-in with any Custom OpenId Provider
                                             }));
+            //container.Register(c => new RavenUserAuthRepository(c.Resolve<IDocumentStore>()));
+            //container.Register<IUserAuthRepository>(c => c.Resolve<RavenUserAuthRepository>());
 
-            //Default route: /register
-            Plugins.Add(new RegistrationFeature());
+            //var connectionStrings = 100.Times(i => GetConnectionStringForTenant(i));
+            container.Register<IUserAuthRepository>(c =>
+                new OrmLiteAuthRepository(c.TryResolve<IDbConnectionFactory>()));
 
-            container.Register(c => new RavenUserAuthRepository(c.Resolve<IDocumentStore>()));
-            container.Register<IUserAuthRepository>(c => c.Resolve<RavenUserAuthRepository>());
+            //container.Resolve<IUserAuthRepository>().InitSchema(); // Create any missing UserAuth tables
+
+            //TODO:
+
+        }
+    }
+
+    public class CustomCredentialsAuthProvider : CredentialsAuthProvider
+    {
+        private readonly IUserAuthRepository _userAuthRepository;
+
+        public CustomCredentialsAuthProvider(IResourceManager appSettings, IUserAuthRepository userAuthRepository) : base(appSettings)
+        {
+            _userAuthRepository = userAuthRepository;
+        }
+
+        public override bool TryAuthenticate(IServiceBase authService, string userName, string password)
+        {            
+            UserAuth userAUth;
+            if (_userAuthRepository.TryAuthenticate(userName, password, out userAUth))
+            {
+                var session = authService.GetSession(/*false*/);
+                //session.CompanyName = "Company from DB";
+                session.UserAuthId = userName;
+                session.IsAuthenticated = true;
+
+                // add roles 
+                session.Roles = new List<string>();
+                if (session.UserAuthId == "admin")
+                {
+                    session.Roles.Add(RoleNames.Admin);
+                }
+                session.Roles.Add("User");
+
+                return true;
+            }
+
+            return false;
         }
     }
 }

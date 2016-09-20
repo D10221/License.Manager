@@ -23,22 +23,37 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-using System;
 using License.Manager.Core.ServiceModel;
+using ServiceStack.Common;
 using ServiceStack.FluentValidation;
+using ServiceStack.ServiceInterface;
+using ServiceStack.ServiceInterface.Auth;
 
 namespace License.Manager.Core.Validation
 {
-    public class CreateLicenseValidator : AbstractValidator<CreateLicense>
+    public class CreateAccountValidator : AbstractValidator<CreateAccount>
     {
-        public CreateLicenseValidator()
-        {
-            RuleFor(l => l.LicenseType).NotNull();
-            RuleFor(l => l.Quantity).GreaterThanOrEqualTo(1);
-            RuleFor(l => l.Expiration).GreaterThan(DateTime.UtcNow);
+        public IUserAuthRepository UserAuthRepo { get; set; }
 
-            // RuleFor(l => l.CustomerId).GreaterThan(0);
-            // RuleFor(l => l.ProductId).GreaterThan(0);
+        public CreateAccountValidator()
+        {
+            RuleSet(ApplyTo.Post, () =>
+            {
+                RuleFor(x => x.Password).NotEmpty();
+                RuleFor(x => x.UserName).NotEmpty().When(x => x.Email.IsNullOrEmpty());
+                RuleFor(x => x.DisplayName).NotEmpty();
+                RuleFor(x => x.Email).NotEmpty().EmailAddress().When(x => x.UserName.IsNullOrEmpty());
+                RuleFor(x => x.UserName)
+                    .Must(x => UserAuthRepo.GetUserAuthByUserName(x) == null)
+                    .WithErrorCode("AlreadyExists")
+                    .WithMessage("UserName already exists")
+                    .When(x => !x.UserName.IsNullOrEmpty());
+                RuleFor(x => x.Email)
+                    .Must(x => x.IsNullOrEmpty() || UserAuthRepo.GetUserAuthByUserName(x) == null)
+                    .WithErrorCode("AlreadyExists")
+                    .WithMessage("Email already exists")
+                    .When(x => !x.Email.IsNullOrEmpty());
+            });
         }
     }
 }

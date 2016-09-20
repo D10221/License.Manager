@@ -25,18 +25,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Web.Configuration;
 using License.Manager.Core.Model;
-using License.Manager.Core.Persistence;
 using License.Manager.Core.ServiceModel;
-using Raven.Client;
-using Raven.Client.Linq;
 using ServiceStack.CacheAccess;
 using ServiceStack.Common;
 using ServiceStack.Common.Web;
+using ServiceStack.OrmLite;
 using ServiceStack.ServiceInterface;
 
 namespace License.Manager.Core.ServiceInterface
@@ -44,13 +44,13 @@ namespace License.Manager.Core.ServiceInterface
     [Authenticate]
     public class LicenseService : Service
     {
-        private readonly IDocumentSession documentSession;
-        private readonly ICacheClient cacheClient;
+        private readonly IDbConnectionFactory _db;
+        private readonly ICacheClient _cacheClient;
 
-        public LicenseService(IDocumentSession documentSession, ICacheClient cacheClient)
+        public LicenseService(IDbConnectionFactory db, ICacheClient cacheClient)
         {
-            this.documentSession = documentSession;
-            this.cacheClient = cacheClient;
+            _db = db;
+            _cacheClient = cacheClient;
         }
 
         public object Get(GetLicenseTypes request)
@@ -61,20 +61,26 @@ namespace License.Manager.Core.ServiceInterface
 
         public object Post(IssueLicense issueRequest)
         {
-            var machineKeySection = WebConfigurationManager.GetSection("system.web/machineKey") as MachineKeySection;
-            if (machineKeySection == null || StringComparer.OrdinalIgnoreCase.Compare(machineKeySection.Decryption, "Auto") == 0)
-                throw new Exception(Properties.Resources.InvalidMachineKeySection);
+            MachineKeySection machineKeySection;
+            Model.License license;
+            Customer customer; 
+            Product product; 
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();
+                machineKeySection = WebConfigurationManager.GetSection("system.web/machineKey") as MachineKeySection;
+                if (machineKeySection == null || StringComparer.OrdinalIgnoreCase.Compare(machineKeySection.Decryption, "Auto") == 0)
+                    throw new Exception(Properties.Resources.InvalidMachineKeySection);              
 
-            var license = documentSession
-                .Include<Model.License, Customer>(lic => lic.CustomerId)
-                .Include<Product>(lic => lic.ProductId)
-                .Load<Model.License>(issueRequest.Id);
+                license = db.GetById<Model.License>(issueRequest.Id);
+                if (license == null)
+                    HttpError.NotFound("License not found!");
 
-            if (license == null)
-                HttpError.NotFound("License not found!");
+                Debug.Assert(license != null, "license != null");
 
-            var customer = documentSession.Load<Customer>(license.CustomerId);
-            var product = documentSession.Load<Product>(license.ProductId);
+                customer = db.GetById<Customer>(license.CustomerId);
+                product = db.GetById<Product>(license.ProductId);
+            }
 
             var licenseFile =
                 Portable.Licensing.License.New()
@@ -94,7 +100,8 @@ namespace License.Manager.Core.ServiceInterface
                                                      machineKeySection.DecryptionKey);
 
             var issueToken = Guid.NewGuid();
-            cacheClient.Set(UrnId.Create<Model.License>("IssueToken", issueToken.ToString()), licenseFile, new TimeSpan(0, 5, 0));
+
+            _cacheClient.Set(UrnId.Create<Model.License>("IssueToken", issueToken.ToString()), licenseFile, new TimeSpan(0, 5, 0));
 
             return new HttpResult(new IssueLicenseResponse {Token = issueToken})
                        {
@@ -109,7 +116,7 @@ namespace License.Manager.Core.ServiceInterface
         public object Get(DownloadLicense downloadRequest)
         {
             var cacheKey = UrnId.Create<Model.License>("IssueToken", downloadRequest.Token.ToString());
-            var license = cacheClient.Get<Portable.Licensing.License>(cacheKey);
+            var license = _cacheClient.Get<Portable.Licensing.License>(cacheKey);
 
             if (license == null)
                 return new HttpResult(HttpStatusCode.NotFound);
@@ -125,17 +132,21 @@ namespace License.Manager.Core.ServiceInterface
 
         public object Post(CreateLicense request)
         {
-            var license = new Model.License().PopulateWith(request);
-
-            documentSession.Store(license);
-            documentSession.SaveChanges();
-
+            Model.License license;
+            Customer customer;
+            Product product; 
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();
+                license = new Model.License().PopulateWith(request);                
+                customer = db.GetById<Customer>(license.CustomerId);                                           
+                product = db.GetById<Product>(license.ProductId);
+            }
             return
                 new HttpResult(new LicenseDto
                                    {
-                                       Customer = documentSession.Load<Customer>(license.CustomerId),
-                                       Product =
-                                           new ProductDto().PopulateWith(documentSession.Load<Product>(license.ProductId))
+                                       Customer = customer,
+                                       Product = new ProductDto().PopulateWith(product)
                                    }.PopulateWith(license))
                     {
                         StatusCode = HttpStatusCode.Created,
@@ -148,34 +159,46 @@ namespace License.Manager.Core.ServiceInterface
 
         public object Put(UpdateLicense request)
         {
-            var license = documentSession
-                .Include<Model.License, Customer>(lic => lic.CustomerId)
-                .Include<Product>(lic => lic.ProductId)
-                .Load<Model.License>(request.Id);
+            Model.License license;
+            Customer customer;
+            Product product;
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();
+                license = db.GetById<Model.License>(request.Id);
 
-            if (license == null)
-                HttpError.NotFound("License not found!");
+                if (license == null)
+                    HttpError.NotFound("License not found!");
 
-            license.PopulateWith(request);
+                license.PopulateWith(request);
+                
+                db.Update(license);
 
-            documentSession.Store(license);
-            documentSession.SaveChanges();
+                Debug.Assert(license != null, "license != null");
+
+                customer = db.GetById<Customer>(license.Id);
+
+                product = db.GetById<Product>(license.ProductId);
+            }
 
             return new LicenseDto
                        {
-                           Customer = documentSession.Load<Customer>(license.CustomerId),
-                           Product = new ProductDto().PopulateWith(documentSession.Load<Product>(license.ProductId))
+                           Customer = customer,
+                           Product = new ProductDto().PopulateWith(product)
                        }.PopulateWith(license);
         }
 
         public object Delete(UpdateLicense request)
         {
-            var license = documentSession.Load<Model.License>(request.Id);
-            if (license == null)
-                HttpError.NotFound("License not found!");
-
-            documentSession.Delete(license);
-            documentSession.SaveChanges();
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();
+                var license = db.GetById<Model.License>(request.Id);
+                if (license == null)
+                    HttpError.NotFound("License not found!");
+                
+                db.Delete(license);
+            }
 
             return
                 new HttpResult
@@ -186,51 +209,65 @@ namespace License.Manager.Core.ServiceInterface
 
         public object Get(GetLicense request)
         {
-            var license = documentSession
-                .Include<Model.License, Customer>(lic => lic.CustomerId)
-                .Include<Product>(lic => lic.ProductId)
-                .Load<Model.License>(request.Id);
+            Model.License license;
+            Customer customer;
+            Product product; 
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();               
+                license = db.GetById<Model.License>(request.Id);
+                if (license == null)
+                    HttpError.NotFound("License not found!");
 
-            if (license == null)
-                HttpError.NotFound("License not found!");
+                Debug.Assert(license != null, "license != null");
 
+                customer = db.GetById<Customer>(license.Id);
+                product = db.GetById<Product>(license.ProductId);
+            }
             return new LicenseDto
                        {
-                           Customer = documentSession.Load<Customer>(license.CustomerId),
-                           Product = new ProductDto().PopulateWith(documentSession.Load<Product>(license.ProductId))
+                           Customer = customer,
+                           Product = new ProductDto().PopulateWith(product)
                        }.PopulateWith(license);
         }
 
         public object Get(FindLicenses request)
         {
-            var query = documentSession.Query<License_ByProductOrCustomer.Result, License_ByProductOrCustomer>()
-                                       .Include<License_ByProductOrCustomer.Result, Customer>(license => license.CustomerId)
-                                       .Include<License_ByProductOrCustomer.Result, Product>(license => license.ProductId);
+            using (var db = _db.CreateDbConnection())
+            {
+                db.Open();
+               
 
-            //if (request.LicenseType.HasValue)
-            //    query = query.Where(lic => lic.LicenseType.Is(request.LicenseType.Value));
+                if (request.CustomerId.HasValue)
+                {                    
+                    return db.Select<Model.License>(x=>x.CustomerId == request.CustomerId.Value);
+                }
 
-            if (request.CustomerId.HasValue)
-                query = query.Where(lic => lic.CustomerId == request.CustomerId.Value);
+                if (request.ProductId.HasValue)
+                {                   
+                    return db.Select<Model.License>(x => x.CustomerId == request.ProductId.Value);
+                }
 
-            if (request.ProductId.HasValue)
-                query = query.Where(lic => lic.ProductId == request.ProductId.Value);
+                
+                return ToDto(db, db.Select<Model.License>());
+            }
+           
+        }
 
-            var licenses = query
-                .OfType<Model.License>()
-                .ToList();
-
-            var result = new List<LicenseDto>(licenses.Count);
-            result.AddRange(
-                licenses.Select(
-                    license => new LicenseDto
-                                   {
-                                       Customer = documentSession.Load<Customer>(license.CustomerId),
-                                       Product =
-                                           new ProductDto().PopulateWith(documentSession.Load<Product>(license.ProductId))
-                                   }.PopulateWith(license)));
-
-            return result;
+        IEnumerable<LicenseDto> ToDto(IDbConnection cnx, IEnumerable<Model.License> licenses)
+        {
+            return licenses.Select(
+                license =>
+                {
+                    var customer = cnx.GetById<Customer>(license.CustomerId);
+                    var product = cnx.GetById<Product>(license.ProductId);
+                    return new LicenseDto
+                    {
+                        Customer = customer,
+                        Product =
+                            new ProductDto().PopulateWith(product)
+                    }.PopulateWith(license);
+                });
         }
     }
 }
